@@ -1298,7 +1298,8 @@ function doLogin() {
     document.getElementById('user-name').textContent = perfilData.nome;
     document.getElementById('user-role').textContent = perfilData.nome;
     // Check if password change required for gestão user
-    if (perfilData.trocarSenha) {
+    const _resetsG = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
+    if (perfilData.trocarSenha || _resetsG[perfilKey]) {
       mostrarTrocaSenha('gestao', perfilKey);
       return;
     }
@@ -1337,8 +1338,9 @@ function doLogin() {
     document.getElementById('colab-logout-btn').style.display = 'block';
     const mobileLogout = document.getElementById('btn-logout-mobile');
     if (mobileLogout) mobileLogout.style.display = 'none';
-    // Check if password change required
-    if (colab.trocarSenha) {
+    // Check if password change required (from localStorage)
+    const _resets = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
+    if (colab.trocarSenha || _resets[colab.id]) {
       mostrarTrocaSenha('colab', colab.id);
       return;
     }
@@ -2285,13 +2287,7 @@ function renderPontoRanking(pontoVinculado, colabs, mesFiltro) {
     if (ps.col!==col) return '<span style="opacity:.3;font-size:10px">⇅</span>';
     return ps.dir==='asc'?'<span style="font-size:10px">↑</span>':'<span style="font-size:10px">↓</span>';
   }
-  function setPontoSort(col) {
-    if (!APP._pontoSort) APP._pontoSort={col:'atrasos',dir:'desc'};
-    APP._pontoSort.dir = APP._pontoSort.col===col?(APP._pontoSort.dir==='asc'?'desc':'asc'):'desc';
-    APP._pontoSort.col = col;
-    const sel = document.getElementById('ponto-mes-filtro');
-    filtrarPontoMes(sel?sel.value:'');
-  }
+  // setPontoSort defined globally
   const thS = 'cursor:pointer;user-select:none;white-space:nowrap';
 
   return `
@@ -3028,7 +3024,14 @@ function salvarUsuario() {
     const cidx = APP.colaboradores.findIndex(c => c.id === colabId);
     if (cidx >= 0) {
       APP.colaboradores[cidx].senha = senha;
-      APP.colaboradores[cidx].trocarSenha = document.getElementById('u-trocar-senha')?.checked || false;
+      const needsReset = document.getElementById('u-trocar-senha')?.checked || false;
+      APP.colaboradores[cidx].trocarSenha = needsReset;
+      // Also persist in localStorage so it survives Sheets sync
+      if (needsReset) {
+        const resets = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
+        resets[APP.colaboradores[cidx].id] = true;
+        localStorage.setItem('ops_trocar_senha', JSON.stringify(resets));
+      }
       // If editing an existing gestão user, remove it from usuarios
       if (key && getPerfis()[key]) {
         const novoUsuarios = { ...(APP.usuarios || PERFIS_DEFAULT) };
@@ -3069,6 +3072,12 @@ function salvarUsuario() {
   novoUsuarios[novoKey] = tipo === 'gerente'
     ? { nome: novoNome, iniciais: ini, senha, podeVerTudo: true, trocarSenha }
     : { nome: novoNome, iniciais: ini, senha, podeVerTudo: false, equipe, trocarSenha };
+  // Persist trocarSenha in localStorage
+  if (trocarSenha) {
+    const resets = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
+    resets[novoKey] = true;
+    localStorage.setItem('ops_trocar_senha', JSON.stringify(resets));
+  }
 
   APP.usuarios = novoUsuarios;
   saveToStorage();
@@ -3514,6 +3523,18 @@ function enviarAcoesPorEmail() {
 // ══════════════════════════════════════════════════════
 // FILTRO MÊS PONTO MAIS
 // ══════════════════════════════════════════════════════
+
+// ── PONTO SORT (global scope so onclick works) ──
+function setPontoSort(col) {
+  if (!APP._pontoSort) APP._pontoSort = { col: 'atrasos', dir: 'desc' };
+  APP._pontoSort.dir = APP._pontoSort.col === col
+    ? (APP._pontoSort.dir === 'asc' ? 'desc' : 'asc')
+    : 'desc';
+  APP._pontoSort.col = col;
+  const sel = document.getElementById('ponto-mes-filtro');
+  filtrarPontoMes(sel ? sel.value : '');
+}
+
 function filtrarPontoMes(mes) {
   // Store current filter and re-render ponto page
   APP._pontoMesFiltro = mes;
@@ -3574,6 +3595,10 @@ function salvarNovaSenha() {
     }
   }
 
+  // Clear trocarSenha flag
+  const _resetsClr = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
+  delete _resetsClr[id];
+  localStorage.setItem('ops_trocar_senha', JSON.stringify(_resetsClr));
   document.getElementById('modal-troca-senha').classList.remove('open');
   showToast('Senha criada com sucesso!', 'success');
 
@@ -3907,12 +3932,17 @@ function salvarAcaoManual() {
     // Add locally for immediate feedback + Sheets for cross-device
     addNotificacao(msg, fb.tipo, colaboradorId, 'todos');
   }
-  document.getElementById('pa-acao').value = '';
-  document.getElementById('pa-prazo').value = '';
-  document.getElementById('pa-colaborador').value = '';
-  document.getElementById('pa-responsavel').value = '';
+  // Clear all fields immediately
+  const acaoEl = document.getElementById('pa-acao');
+  const prazoEl = document.getElementById('pa-prazo');
+  const colabEl = document.getElementById('pa-colaborador');
+  const respEl  = document.getElementById('pa-responsavel');
+  if (acaoEl)  acaoEl.value  = '';
+  if (prazoEl) prazoEl.value = '';
+  if (colabEl) colabEl.value = '';
+  if (respEl)  respEl.value  = '';
+  if (acaoEl)  acaoEl.focus();
   showToast('Ação adicionada!', 'success');
-  // Just update table and counters, don't re-render whole page
   renderizarTabelaAcoes();
   atualizarFarolPA();
 }
