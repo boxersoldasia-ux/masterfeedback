@@ -677,7 +677,7 @@ function inicializarPlanilha() {
           🔄
         </button>
       </div>
-      <div style="position:relative;cursor:pointer" onclick="toggleNotificacoes()" title="Notificações">
+      <div id="notif-bell-wrap" style="position:relative;cursor:pointer" onclick="toggleNotificacoes()" title="Notificações">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="var(--muted)" stroke-width="1.5"><path d="M10 2a6 6 0 0 1 6 6c0 3 1 4 1.5 5H2.5C3 13 4 12 4 8a6 6 0 0 1 6-6z"/><path d="M8 17a2 2 0 0 0 4 0"/></svg>
         <span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center"></span>
       </div>
@@ -3932,19 +3932,20 @@ function salvarAcaoManual() {
     // Add locally for immediate feedback + Sheets for cross-device
     addNotificacao(msg, fb.tipo, colaboradorId, 'todos');
   }
-  // Clear all fields immediately
-  const acaoEl = document.getElementById('pa-acao');
-  const prazoEl = document.getElementById('pa-prazo');
-  const colabEl = document.getElementById('pa-colaborador');
-  const respEl  = document.getElementById('pa-responsavel');
-  if (acaoEl)  acaoEl.value  = '';
-  if (prazoEl) prazoEl.value = '';
-  if (colabEl) colabEl.value = '';
-  if (respEl)  respEl.value  = '';
-  if (acaoEl)  acaoEl.focus();
   showToast('Ação adicionada!', 'success');
   renderizarTabelaAcoes();
   atualizarFarolPA();
+  // Clear fields AFTER render (render may recreate the DOM)
+  requestAnimationFrame(() => {
+    const acaoEl = document.getElementById('pa-acao');
+    const prazoEl = document.getElementById('pa-prazo');
+    const colabEl = document.getElementById('pa-colaborador');
+    const respEl  = document.getElementById('pa-responsavel');
+    if (acaoEl)  { acaoEl.value  = ''; acaoEl.focus(); }
+    if (prazoEl) prazoEl.value = '';
+    if (colabEl) colabEl.value = '';
+    if (respEl)  respEl.value  = '';
+  });
 }
 
 function excluirAcao(id) {
@@ -4556,6 +4557,7 @@ function colabTab(tab, el) {
 
 function updateTopbarBtn() {
   const wrap = document.getElementById('topbar-action-btn');
+  const notifBell = document.getElementById('notif-bell-wrap');
   if (!wrap) return;
   if (APP.tipoAcesso === 'colaborador') {
     wrap.innerHTML = `
@@ -4563,12 +4565,16 @@ function updateTopbarBtn() {
         <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><line x1="8" y1="8" x2="12" y2="8"/><line x1="8" y1="12" x2="12" y2="12"/></svg>
         Enviar Feedback
       </button>`;
+    // Hide notification bell for colaborador
+    if (notifBell) notifBell.style.display = 'none';
   } else {
     wrap.innerHTML = `
       <button class="btn btn-primary btn-sm" onclick="openModal('feedback')">
         <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="4" x2="10" y2="16"/><line x1="4" y1="10" x2="16" y2="10"/></svg>
         Novo Registro
       </button>`;
+    // Show notification bell for gestão
+    if (notifBell) notifBell.style.display = '';
   }
 }
 
