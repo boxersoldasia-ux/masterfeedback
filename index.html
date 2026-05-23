@@ -3628,7 +3628,10 @@ function calcStatus(acao) {
   if (acao.dataConclusao) return 'concluido';
   if (!acao.prazo) return 'pendente';
   const hoje = new Date().toISOString().slice(0,10);
-  return acao.prazo < hoje ? 'atrasado' : 'andamento';
+  let prazo = String(acao.prazo);
+  if (prazo.startsWith('DATA:')) prazo = prazo.replace('DATA:', '');
+  prazo = prazo.split('T')[0];
+  return prazo < hoje ? 'atrasado' : 'andamento';
 }
 
 function statusLabel(s) {
@@ -3757,6 +3760,14 @@ function renderPlanoAcao() {
   `;
 }
 
+function cleanPrazoSort(v) {
+  // Remove DATA: prefix for sorting
+  if (!v) return '';
+  let s = String(v);
+  if (s.startsWith('DATA:')) s = s.replace('DATA:', '');
+  return s.split('T')[0]; // keep only YYYY-MM-DD
+}
+
 function sortAcoes(acoes) {
   const { col, dir } = APP.paSort || { col: 'prazo', dir: 'asc' };
   return [...acoes].sort((a, b) => {
@@ -3764,7 +3775,7 @@ function sortAcoes(acoes) {
     if (col === 'acao')        { va = a.acao||''; vb = b.acao||''; }
     else if (col === 'colab')  { va = (APP.colaboradores.find(c=>c.id===a.colaboradorId)?.nome)||''; vb = (APP.colaboradores.find(c=>c.id===b.colaboradorId)?.nome)||''; }
     else if (col === 'resp')   { va = a.responsavel||''; vb = b.responsavel||''; }
-    else if (col === 'prazo')  { va = a.prazo||''; vb = b.prazo||''; }
+    else if (col === 'prazo')  { va = cleanPrazoSort(a.prazo); vb = cleanPrazoSort(b.prazo); }
     else if (col === 'status') { va = calcStatus(a); vb = calcStatus(b); }
     else { va = ''; vb = ''; }
     const cmp = va.localeCompare(vb, 'pt-BR');
@@ -3920,8 +3931,13 @@ function salvarAcaoManual() {
   };
   APP.acoes.push(novaAcao);
   saveToStorage();
-  syncAcoesToSheet();
+  // Update UI immediately BEFORE async sheet sync
   updateBadges();
+  atualizarFarolPA();
+  const wrap = document.getElementById('pa-tabela-wrap');
+  if (wrap) wrap.innerHTML = renderTabelaAcoes(APP.acoes);
+  // Sync to Sheets in background (don't await)
+  syncAcaoUnica(novaAcao.id);
   // Notify about new acao
   const colabAcao = APP.colaboradores.find(c => c.id === colabId);
   if (colabAcao && APP.sheetUrl) {
@@ -3933,8 +3949,6 @@ function salvarAcaoManual() {
     addNotificacao(msg, fb.tipo, colaboradorId, 'todos');
   }
   showToast('Ação adicionada!', 'success');
-  renderizarTabelaAcoes();
-  atualizarFarolPA();
 }
 
 function excluirAcao(id) {
