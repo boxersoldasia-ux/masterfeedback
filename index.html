@@ -3935,17 +3935,6 @@ function salvarAcaoManual() {
   showToast('Ação adicionada!', 'success');
   renderizarTabelaAcoes();
   atualizarFarolPA();
-  // Clear fields AFTER render (render may recreate the DOM)
-  requestAnimationFrame(() => {
-    const acaoEl = document.getElementById('pa-acao');
-    const prazoEl = document.getElementById('pa-prazo');
-    const colabEl = document.getElementById('pa-colaborador');
-    const respEl  = document.getElementById('pa-responsavel');
-    if (acaoEl)  { acaoEl.value  = ''; acaoEl.focus(); }
-    if (prazoEl) prazoEl.value = '';
-    if (colabEl) colabEl.value = '';
-    if (respEl)  respEl.value  = '';
-  });
 }
 
 function excluirAcao(id) {
@@ -4981,8 +4970,8 @@ async function loadSheetData(sheetName) {
   else if (sheetName === 'acoes') {
     function cleanAcaoDate(v) {
       if (!v) return '';
-      const s = String(v);
-      if (s.startsWith('DATA:')) return s.replace('DATA:', '');
+      let s = String(v);
+      if (s.startsWith('DATA:')) s = s.replace('DATA:', '');
       // ISO date from Sheets: 2026-05-19T00:00:00.000Z → 2026-05-19
       const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
       if (m) return m[1];
@@ -5330,9 +5319,14 @@ function updateBadges() {
 
 function formatDate(d) {
   if (!d) return '—';
-  const parts = d.split('-');
-  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  return d;
+  let s = String(d);
+  // Strip DATA: prefix if present
+  if (s.startsWith('DATA:')) s = s.replace('DATA:', '');
+  // Strip ISO datetime suffix
+  s = s.split('T')[0];
+  const parts = s.split('-');
+  if (parts.length === 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
+  return s;
 }
 
 function showToast(msg, type='') {
