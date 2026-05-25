@@ -404,8 +404,9 @@
     position: sticky;
     top: 0;
     background: var(--surface);
-    z-index: 10;
+    z-index: 20;
     border-bottom: 2px solid var(--border-strong);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
   }
 </style>
 </head>
@@ -1759,7 +1760,7 @@ function renderDashContent() {
   </div>
 
   <div class="table-card">
-    <div class="table-header" style="position:sticky;top:60px;z-index:30;background:var(--card);border-radius:var(--radius) var(--radius) 0 0;border-bottom:1px solid var(--border)">
+    <div class="table-header">
       <div style="font-weight:500;font-size:14px">Últimos Registros ${f.mes||f.lider||f.colab?'<span class="badge badge-warn" style="margin-left:8px">Filtrado</span>':''}</div>
       <button class="btn btn-secondary btn-sm" onclick="navTo('feedbacks')">Ver todos</button>
     </div>
@@ -3745,7 +3746,7 @@ function renderPlanoAcao() {
         <button class="btn btn-secondary btn-sm" onclick="limparFiltrosPA()">Limpar</button>
       </div>
     </div>
-    <div id="pa-tabela-wrap">
+    <div id="pa-tabela-wrap" style="overflow-y:auto;max-height:calc(100vh - 320px)">
       ${renderTabelaAcoes(todasAcoes)}
     </div>
   </div>
