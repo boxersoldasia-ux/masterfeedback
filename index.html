@@ -392,13 +392,20 @@
   .colab-view-only #sidebar { display: none !important; }
   .colab-view-only #main { margin-left: 0 !important; }
 
-  /* Plano de Ação sticky header */
+  /* Plano de Ação sticky headers */
   .pa-sticky {
     position: sticky;
     top: 60px;
     z-index: 40;
     background: var(--bg);
     padding-bottom: 8px;
+  }
+  #pa-tabela-wrap table thead tr th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 10;
+    border-bottom: 2px solid var(--border-strong);
   }
 </style>
 </head>
@@ -1297,9 +1304,8 @@ function doLogin() {
     document.getElementById('user-initials').textContent = perfilData.iniciais || initials(perfilData.nome);
     document.getElementById('user-name').textContent = perfilData.nome;
     document.getElementById('user-role').textContent = perfilData.nome;
-    // Check if password change required for gestão user
-    const _resetsG = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
-    if (perfilData.trocarSenha || _resetsG[perfilKey]) {
+    // Check if password change required (from Sheets via perfilData.trocarSenha)
+    if (perfilData.trocarSenha === true) {
       mostrarTrocaSenha('gestao', perfilKey);
       return;
     }
@@ -1338,9 +1344,8 @@ function doLogin() {
     document.getElementById('colab-logout-btn').style.display = 'block';
     const mobileLogout = document.getElementById('btn-logout-mobile');
     if (mobileLogout) mobileLogout.style.display = 'none';
-    // Check if password change required (from localStorage)
-    const _resets = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
-    if (colab.trocarSenha || _resets[colab.id]) {
+    // Check if password change required (from Sheets via colab.trocarSenha)
+    if (colab.trocarSenha === true) {
       mostrarTrocaSenha('colab', colab.id);
       return;
     }
@@ -1754,7 +1759,7 @@ function renderDashContent() {
   </div>
 
   <div class="table-card">
-    <div class="table-header">
+    <div class="table-header" style="position:sticky;top:60px;z-index:30;background:var(--card);border-radius:var(--radius) var(--radius) 0 0;border-bottom:1px solid var(--border)">
       <div style="font-weight:500;font-size:14px">Últimos Registros ${f.mes||f.lider||f.colab?'<span class="badge badge-warn" style="margin-left:8px">Filtrado</span>':''}</div>
       <button class="btn btn-secondary btn-sm" onclick="navTo('feedbacks')">Ver todos</button>
     </div>
@@ -2842,12 +2847,13 @@ function renderConfiguracoes() {
         const bgColor = isGer ? 'var(--accent-light)' : 'var(--info-light)';
         const txtColor = isGer ? 'var(--accent)' : 'var(--info)';
         const roleLabel = isGer ? 'Acesso total' : (p.equipe ? 'Equipe: '+p.equipe : 'Líder');
+        const trocaFlag = p.trocarSenha ? ' · ⚠️ Troca de senha pendente' : '';
         return `<div class="config-row">
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:32px;height:32px;border-radius:50%;background:${bgColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:${txtColor};flex-shrink:0">${p.iniciais||initials(p.nome)}</div>
             <div>
               <div style="font-weight:500;font-size:13px">${p.nome}</div>
-              <div style="font-size:11px;color:var(--muted)">${roleLabel} · Senha: ${'•'.repeat(p.senha.length)}</div>
+              <div style="font-size:11px;color:var(--muted)">${roleLabel} · Senha: ${'•'.repeat(p.senha.length)}${trocaFlag}</div>
             </div>
           </div>
           <div style="display:flex;gap:6px">
@@ -3026,12 +3032,6 @@ function salvarUsuario() {
       APP.colaboradores[cidx].senha = senha;
       const needsReset = document.getElementById('u-trocar-senha')?.checked || false;
       APP.colaboradores[cidx].trocarSenha = needsReset;
-      // Also persist in localStorage so it survives Sheets sync
-      if (needsReset) {
-        const resets = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
-        resets[APP.colaboradores[cidx].id] = true;
-        localStorage.setItem('ops_trocar_senha', JSON.stringify(resets));
-      }
       // If editing an existing gestão user, remove it from usuarios
       if (key && getPerfis()[key]) {
         const novoUsuarios = { ...(APP.usuarios || PERFIS_DEFAULT) };
@@ -3072,19 +3072,13 @@ function salvarUsuario() {
   novoUsuarios[novoKey] = tipo === 'gerente'
     ? { nome: novoNome, iniciais: ini, senha, podeVerTudo: true, trocarSenha }
     : { nome: novoNome, iniciais: ini, senha, podeVerTudo: false, equipe, trocarSenha };
-  // Persist trocarSenha in localStorage
-  if (trocarSenha) {
-    const resets = JSON.parse(localStorage.getItem('ops_trocar_senha') || '{}');
-    resets[novoKey] = true;
-    localStorage.setItem('ops_trocar_senha', JSON.stringify(resets));
-  }
 
   APP.usuarios = novoUsuarios;
   saveToStorage();
   // Sync all usuarios to sheet
   if (APP.sheetUrl) {
-    const uRows = Object.entries(novoUsuarios).map(([k,p]) => [k, p.nome, p.iniciais||'', p.senha, String(p.podeVerTudo), p.equipe||'']);
-    sheetsPost({ action: 'replace_all', sheet: 'usuarios', headers: ['Key','Nome','Iniciais','Senha','PodeVerTudo','Equipe'], rows: uRows });
+    const uRows = Object.entries(novoUsuarios).map(([k,p]) => [k, p.nome, p.iniciais||'', p.senha, String(p.podeVerTudo), p.equipe||'', String(p.trocarSenha||false)]);
+    sheetsPost({ action: 'replace_all', sheet: 'usuarios', headers: ['Key','Nome','Iniciais','Senha','PodeVerTudo','Equipe','TrocarSenha'], rows: uRows });
   }
   populateLoginSelect();
   closeModal('usuario');
@@ -3577,7 +3571,7 @@ function salvarNovaSenha() {
         APP.colaboradores[idx].funcao, APP.colaboradores[idx].lider,
         APP.colaboradores[idx].admissao||'', APP.colaboradores[idx].turno||'',
         APP.colaboradores[idx].foto||'', APP.colaboradores[idx].obs||'',
-        nova, APP.colaboradores[idx].telefone||'', APP.colaboradores[idx].email||''
+        nova, APP.colaboradores[idx].telefone||'', APP.colaboradores[idx].email||'', 'false'
       ]);
     }
   } else {
@@ -3589,8 +3583,8 @@ function salvarNovaSenha() {
       APP.usuarios = perfis;
       saveToStorage();
       if (APP.sheetUrl) {
-        const uRows = Object.entries(perfis).map(([k,p]) => [k, p.nome, p.iniciais||'', p.senha, String(p.podeVerTudo), p.equipe||'']);
-        sheetsPost({ action: 'replace_all', sheet: 'usuarios', headers: ['Key','Nome','Iniciais','Senha','PodeVerTudo','Equipe'], rows: uRows });
+        const uRows = Object.entries(perfis).map(([k,p]) => [k, p.nome, p.iniciais||'', p.senha, String(p.podeVerTudo), p.equipe||'', String(p.trocarSenha||false)]);
+        sheetsPost({ action: 'replace_all', sheet: 'usuarios', headers: ['Key','Nome','Iniciais','Senha','PodeVerTudo','Equipe','TrocarSenha'], rows: uRows });
       }
     }
   }
@@ -3653,7 +3647,6 @@ function renderPlanoAcao() {
   const concluidas = todasAcoes.filter(a => calcStatus(a) === 'concluido').length;
 
   return `
-  <div class="pa-sticky">
   <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:10px">
     <button class="btn btn-secondary btn-sm" onclick="sincronizarAcoes()" title="Buscar dados atualizados do Google Sheets">
       🔄 Sincronizar
@@ -3723,7 +3716,6 @@ function renderPlanoAcao() {
       <button class="btn btn-primary" onclick="salvarAcaoManual()" style="margin-bottom:1px">+ Adicionar</button>
     </div>
   </div>
-  </div><!-- end pa-sticky -->
 
   <!-- Tabela de Ações -->
   <div class="table-card">
@@ -4742,7 +4734,7 @@ function salvarColaborador() {
   };
   APP.colaboradores.push(c);
   saveToStorage();
-  if (APP.sheetUrl) syncToSheet('colaboradores', [c.id, c.nome, c.funcao, c.lider, c.admissao, c.turno, c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'']);
+  if (APP.sheetUrl) syncToSheet('colaboradores', [c.id, c.nome, c.funcao, c.lider, c.admissao, c.turno, c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'', String(c.trocarSenha||false)]);
   closeModal('colaborador');
   updateBadges();
   showToast(`${c.nome} cadastrado!`, 'success');
@@ -4937,17 +4929,18 @@ async function loadSheetData(sheetName) {
 
   if (sheetName === 'colaboradores') {
     APP.colaboradores = rows.map(r => ({
-      id:       String(r[0]||''),
-      nome:     String(r[1]||''),
-      funcao:   String(r[2]||''),
-      lider:    String(r[3]||''),
-      admissao: String(r[4]||''),
-      turno:    String(r[5]||''),
-      foto:     String(r[6]||''),
-      obs:      String(r[7]||''),
-      senha:    r[8] ? String(r[8]) : null,
-      telefone: r[9] ? String(r[9]) : null,
-      email:    r[10] ? String(r[10]) : null,
+      id:          String(r[0]||''),
+      nome:        String(r[1]||''),
+      funcao:      String(r[2]||''),
+      lider:       String(r[3]||''),
+      admissao:    String(r[4]||''),
+      turno:       String(r[5]||''),
+      foto:        String(r[6]||''),
+      obs:         String(r[7]||''),
+      senha:       r[8] ? String(r[8]) : null,
+      telefone:    r[9] ? String(r[9]) : null,
+      email:       r[10] ? String(r[10]) : null,
+      trocarSenha: String(r[11]||'') === 'true',
     })).filter(c => c.id && c.nome);
     localStorage.setItem('ops_colaboradores', JSON.stringify(APP.colaboradores));
   }
@@ -5145,6 +5138,7 @@ async function loadSheetData(sheetName) {
         senha:       String(r[3]||''),
         podeVerTudo: String(r[4]||'') === 'true',
         equipe:      r[5] ? String(r[5]) : undefined,
+        trocarSenha: String(r[6]||'') === 'true',
       };
     });
     if (Object.keys(usuarios).length > 0) {
