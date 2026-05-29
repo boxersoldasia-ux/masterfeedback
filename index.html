@@ -1157,19 +1157,22 @@ async function init() {
 
   if (APP.sheetUrl) {
     updateSheetStatus(true);
-    // Sync ALL data before showing login
     setLoadingMsg('Carregando dados...');
     try {
-      await Promise.all([
-        loadSheetData('colaboradores'),
-        loadSheetData('feedbacks'),
-        loadSheetData('acoes'),
-        loadSheetData('usuarios'),
-        loadSheetData('ponto'),
+      // Timeout de 8 segundos — se o Sheets não responder, usa dados locais
+      await Promise.race([
+        Promise.all([
+          loadSheetData('colaboradores'),
+          loadSheetData('feedbacks'),
+          loadSheetData('acoes'),
+          loadSheetData('usuarios'),
+          loadSheetData('ponto'),
+        ]),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
       ]);
       setLoadingMsg('Pronto!');
     } catch(e) {
-      console.warn('Pre-login sync error', e);
+      console.warn('Pre-login sync error:', e.message);
       setLoadingMsg('Usando dados locais...');
     }
   } else if (APP.colaboradores.length === 0) {
