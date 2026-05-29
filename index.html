@@ -2394,18 +2394,27 @@ function processFile(file) {
         // Linha de cabeçalho das colunas — mapear índices e pular
         if (headerLine && (line.startsWith('Data,') || line.includes('1ª Entrada'))) {
           headerLine = false;
-          const hCols = parseCsvLine(line).map(h => h.trim().toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-            .replace(/[ºª°]/g,'').trim());
+          // Normalize headers: remove ordinal indicators and accents carefully
+          const rawH = parseCsvLine(line).map(h => h.trim()
+            .replace(/[ºª°]/g,'')           // remove ordinal indicators
+            .replace(/[íìîï]/gi,'i')         // í → i
+            .replace(/[éèêë]/gi,'e')         // é → e
+            .replace(/[áàâã]/gi,'a')         // á → a
+            .replace(/[óôõ]/gi,'o')          // ó → o
+            .replace(/[úùû]/gi,'u')          // ú → u
+            .replace(/[ç]/gi,'c')            // ç → c
+            .toLowerCase().trim());
           colHeaders = {
-            e1:   hCols.findIndex(h=>h.includes('1 entrada')),
-            s1:   hCols.findIndex(h=>h.includes('1 saida')),
-            e2:   hCols.findIndex(h=>h.includes('2 entrada')),
-            s2:   hCols.findIndex(h=>h.includes('2 saida')),
-            cred: hCols.findIndex(h=>h==='credito'||h==='credito'),
-            deb:  hCols.findIndex(h=>h==='debito'),
-            hn:   hCols.findIndex(h=>h.includes('horas normais')),
-            saldo:hCols.length - 1, // saldo é sempre a última coluna
+            e1:   rawH.findIndex(h=>h.includes('1 entrada')),
+            s1:   rawH.findIndex(h=>h.includes('1 saida')),
+            e2:   rawH.findIndex(h=>h.includes('2 entrada')),
+            s2:   rawH.findIndex(h=>h.includes('2 saida')),
+            e3:   rawH.findIndex(h=>h.includes('3 entrada')),
+            s3:   rawH.findIndex(h=>h.includes('3 saida')),
+            cred: rawH.findIndex(h=>h.includes('credito')),
+            deb:  rawH.findIndex(h=>h.includes('debito')),
+            hn:   rawH.findIndex(h=>h.includes('horas normais')),
+            saldo:rawH.length - 1,
           };
           continue;
         }
@@ -2426,13 +2435,15 @@ function processFile(file) {
 
         // Lê colunas pelo índice do cabeçalho (suporta 3ª entrada/saída opcional)
         const ci = colHeaders; // índices mapeados na linha de cabeçalho
-        const entrada1 = cols[ci.e1]?.trim() || '';
-        const saida1   = cols[ci.s1]?.trim() || '';
-        const entrada2 = cols[ci.e2]?.trim() || '';
-        const saida2   = cols[ci.s2]?.trim() || '';
-        const credito  = cols[ci.cred]?.trim() || '';
-        const debito   = cols[ci.deb]?.trim() || '';
-        const horasNormais = cols[ci.hn]?.trim() || '';
+        const entrada1 = (ci.e1>=0 ? cols[ci.e1] : '')?.trim() || '';
+        const saida1   = (ci.s1>=0 ? cols[ci.s1] : '')?.trim() || '';
+        const entrada2 = (ci.e2>=0 ? cols[ci.e2] : '')?.trim() || '';
+        const saida2   = (ci.s2>=0 ? cols[ci.s2] : '')?.trim() || '';
+        const entrada3 = (ci.e3>=0 ? cols[ci.e3] : '')?.trim() || '';
+        const saida3   = (ci.s3>=0 ? cols[ci.s3] : '')?.trim() || '';
+        const credito  = (ci.cred>=0 ? cols[ci.cred] : '')?.trim() || '';
+        const debito   = (ci.deb>=0 ? cols[ci.deb] : '')?.trim() || '';
+        const horasNormais = (ci.hn>=0 ? cols[ci.hn] : '')?.trim() || '';
         const saldo    = cols[ci.saldo]?.trim() || '';
 
         // Determina status
@@ -2969,7 +2980,10 @@ function abrirModalUsuario(key) {
     document.getElementById('u-equipe').value = '';
   }
   modal.classList.add('open');
-}
+}  // Set trocarSenha checkbox
+  const trocaCb = document.getElementById('u-trocar-senha');
+  if (trocaCb) trocaCb.checked = !!(p && p.trocarSenha);
+  
 
 function editarUsuario(key) { abrirModalUsuario(key); }
 
