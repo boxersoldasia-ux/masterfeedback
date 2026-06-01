@@ -5138,7 +5138,8 @@ async function loadSheetData(sheetName) {
     // Helper: clean dataBR DD/MM/YYYY
     function cleanDateBR(v) {
       if (!v) return '';
-      const s = String(v);
+      let s = String(v);
+      if (s.startsWith('D:')) s = s.slice(2);
       const mISO = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
       if (mISO) return mISO[3] + '/' + mISO[2] + '/' + mISO[1];
       return s;
@@ -5146,8 +5147,10 @@ async function loadSheetData(sheetName) {
     APP.pontoData = rows.map(r => {
       const dataRaw = String(r[1]||'');
       const data = cleanDate(dataRaw);
-      const dataBR = String(r[2]||'') && !String(r[2]||'').includes('T')
-        ? String(r[2]) : cleanDateBR(dataRaw);
+      // Clean D: prefix from dataBR too
+      let rawBR = String(r[2]||'');
+      if (rawBR.startsWith('D:')) rawBR = rawBR.slice(2);
+      const dataBR = rawBR && !rawBR.includes('T') ? rawBR : cleanDateBR(data);
       return {
         nome:      String(r[0]||''),
         data,
