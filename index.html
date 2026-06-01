@@ -2982,11 +2982,11 @@ function abrirModalUsuario(key) {
   } else if (!p && !isColabEdit) {
     document.getElementById('u-equipe').value = '';
   }
-  modal.classList.add('open');
-}  // Set trocarSenha checkbox
+  // Set trocarSenha checkbox
   const trocaCb = document.getElementById('u-trocar-senha');
   if (trocaCb) trocaCb.checked = !!(p && p.trocarSenha);
-  
+  modal.classList.add('open');
+}
 
 function editarUsuario(key) { abrirModalUsuario(key); }
 
