@@ -4836,10 +4836,16 @@ async function sheetsPost(payload) {
 async function sheetsGet(sheetName) {
   if (!APP.sheetUrl) return null;
   try {
-    const res = await fetch(`${APP.sheetUrl}?sheet=${encodeURIComponent(sheetName)}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(APP.sheetUrl + '?sheet=' + encodeURIComponent(sheetName), { signal: controller.signal });
+    clearTimeout(timer);
     const data = await res.json();
     return Array.isArray(data) ? data : null;
-  } catch(e) { console.warn('Sheets GET error', e); return null; }
+  } catch(e) {
+    console.warn('Sheets GET error:', sheetName, e.message);
+    return null;
+  }
 }
 
 // Legacy compat
