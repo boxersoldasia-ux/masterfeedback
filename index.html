@@ -4729,7 +4729,7 @@ function salvarColaborador() {
       };
     }
     saveToStorage();
-    if (APP.sheetUrl) syncToSheet('colaboradores', [APP.colaboradores[idx].id, APP.colaboradores[idx].nome, APP.colaboradores[idx].funcao, APP.colaboradores[idx].lider, APP.colaboradores[idx].admissao, APP.colaboradores[idx].turno, APP.colaboradores[idx].foto||'', APP.colaboradores[idx].obs||'', APP.colaboradores[idx].senha||'', APP.colaboradores[idx].telefone||'']);
+    if (APP.sheetUrl) { const colRows = APP.colaboradores.map(c => [c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'', c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'', String(c.trocarSenha||false)]); sheetsPost({ action: 'replace_all', sheet: 'colaboradores', headers: ['ID','Nome','Funcao','Lider','Admissao','Turno','Foto','Obs','Senha','Telefone','Email','TrocarSenha'], rows: colRows }); }
     closeModal('colaborador');
     updateBadges();
     showToast(`${nome} atualizado!`, 'success');
@@ -4811,13 +4811,20 @@ function editarColaborador(id) {
   document.getElementById('modal-colaborador').classList.add('open');
 }
 
-function excluirColaborador(id, nome) {
+async function excluirColaborador(id, nome) {
   if (!confirm(`Excluir "${nome}"?\n\nOs feedbacks deste colaborador também serão removidos.`)) return;
   APP.colaboradores = APP.colaboradores.filter(x => x.id !== id);
   APP.feedbacks = APP.feedbacks.filter(x => x.colaboradorId !== id);
   saveToStorage();
   updateBadges();
   showToast(`${nome} removido`, 'success');
+  // Sincroniza exclusão com Google Sheets (replace_all para garantir remoção)
+  if (APP.sheetUrl) {
+    const colRows = APP.colaboradores.map(c => [c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'', c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'', String(c.trocarSenha||false)]);
+    const fbRows  = APP.feedbacks.map(f => [f.id, f.colaboradorId, f.tipo, f.titulo, f.descricao||'', f.data||'', f.satisfacao||'', f.acao||'', f.prazo||'', f.registradoPor||'']);
+    await sheetsPost({ action: 'replace_all', sheet: 'colaboradores', headers: ['ID','Nome','Funcao','Lider','Admissao','Turno','Foto','Obs','Senha','Telefone','Email','TrocarSenha'], rows: colRows });
+    await sheetsPost({ action: 'replace_all', sheet: 'feedbacks',     headers: ['ID','ColaboradorID','Tipo','Titulo','Descricao','Data','Satisfacao','Acao','Prazo','RegistradoPor'], rows: fbRows });
+  }
   renderPage(document.querySelector('.nav-item.active')?.dataset?.page || 'colaboradores');
 }
 
@@ -5219,6 +5226,7 @@ function iniciarAutoSync() {
     if (!APP.logado) return;
     try {
       const prevFbCount = APP.feedbacks.length;
+      await loadSheetData('colaboradores'); // garante novos colabs e trocas de líder para todos
       await loadSheetData('acoes');
       await loadSheetData('feedbacks');
       await loadSheetData('notificacoes');
@@ -5226,6 +5234,7 @@ function iniciarAutoSync() {
       const page = document.querySelector('.nav-item.active')?.dataset?.page;
       // Only re-render if feedbacks changed (new ones arrived)
       const newFbCount = APP.feedbacks.length;
+      const newColabCount = APP.colaboradores.length;
       if (newFbCount > prevFbCount) {
         // New feedbacks arrived — notify gestão users
         if (APP.tipoAcesso !== 'colaborador') {
@@ -5242,6 +5251,11 @@ function iniciarAutoSync() {
         }
         // Refresh open detalhe modal
         if (APP.colaboradorDetalhe) abrirDetalhe(APP.colaboradorDetalhe);
+      }
+      // Re-render colaboradores se a página estiver aberta (capta novos cadastros e trocas de líder)
+      if (page === 'colaboradores') {
+        renderPage('colaboradores');
+        updateBadges();
       }
       if (page === 'planoacao') {
         // Don't re-render if user is actively typing in the acao field
@@ -5344,8 +5358,16 @@ function populateColaboradoresSelect() {
 
 // ======= HELPERS =======
 function filteredColabs() {
-  if (APP.usuario?.podeVerTudo) return APP.colaboradores;
-  return APP.colaboradores.filter(c => c.lider === APP.usuario?.equipe);
+  let lista;
+  if (APP.usuario?.podeVerTudo) {
+    lista = [...APP.colaboradores];
+  } else {
+    // Normaliza para comparação: ignora case e espaços extras
+    const equipe = (APP.usuario?.equipe || '').trim().toLowerCase();
+    lista = APP.colaboradores.filter(c => (c.lider || '').trim().toLowerCase() === equipe);
+  }
+  // Ordenação alfabética pelo nome
+  return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
 function filteredFeedbacks() {
