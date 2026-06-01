@@ -2504,11 +2504,13 @@ function processFile(file) {
     if (APP.sheetUrl) {
       showToast('Sincronizando ponto com Sheets...', '');
       const headers = ['Nome','Data','DataBR','DiaSemana','Entrada1','Saida1','Entrada2','Saida2','Horas','Credito','Debito','Saldo','Status'];
+      // Prefix times with T: to prevent Google Sheets auto-conversion
+      function tp(v) { return v ? 'T:' + v : ''; }
       const rows = data.map(p => [
-        p.nome||'', p.data||'', p.dataBR||'', p.diaSemana||'',
-        p.entrada1||'', p.saida1||'', p.entrada2||'', p.saida2||'',
-        p.horas||'', p.credito||'', p.debito||'',
-        p.saldo ? 'SALDO:' + p.saldo : '', // prefix to prevent Sheets auto-converting
+        p.nome||'', 'D:' + (p.data||''), p.dataBR||'', p.diaSemana||'',
+        tp(p.entrada1), tp(p.saida1), tp(p.entrada2), tp(p.saida2),
+        tp(p.horas), tp(p.credito), tp(p.debito),
+        p.saldo ? 'SALDO:' + p.saldo : '',
         p.status||''
       ]);
       sheetsPost({ action: 'replace_all', sheet: 'ponto', headers, rows }).then(() => {
@@ -2949,8 +2951,7 @@ function revogarAcessoColab(colabId, nome) {
     if (APP.sheetUrl) {
       syncToSheet('colaboradores', [
         c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'',
-        c.foto||'', c.obs||'', '', c.telefone||'', c.email||''
-      ]);
+        c.foto||'', c.obs||'', '', c.telefone||'', c.email||'', String(c.trocarSenha||false)]);
     }
   }
   navTo('configuracoes');
@@ -3058,11 +3059,12 @@ function salvarUsuario() {
       }
       saveToStorage();
       // ── Sync colaborador with senha to Sheets immediately ──
-      const c = APP.colaboradores[cidx];
       if (APP.sheetUrl) {
+        const c = APP.colaboradores[cidx];
         syncToSheet('colaboradores', [
           c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'',
-          c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||''
+          c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'',
+          String(c.trocarSenha||false)
         ]);
       }
       populateLoginSelect();
@@ -5058,10 +5060,18 @@ async function loadSheetData(sheetName) {
     // Helper: clean Sheets ISO datetime → just the time HH:MM
     function cleanTime(v) {
       if (!v) return '';
-      const s = String(v);
+      let s = String(v).trim();
+      // Strip T: prefix
+      if (s.startsWith('T:')) return s.slice(2);
       // ISO format: 1899-12-30T07:12:00.000Z → extract HH:MM
       const mISO = s.match(/T(\d{2}:\d{2})/);
       if (mISO) return mISO[1];
+      // Decimal fraction of day (Sheets auto-conversion: 0.40972 = 09:50)
+      const num = parseFloat(s);
+      if (!isNaN(num) && num > 0 && num < 1) {
+        const totalMin = Math.round(num * 24 * 60);
+        return String(Math.floor(totalMin/60)).padStart(2,'0') + ':' + String(totalMin%60).padStart(2,'0');
+      }
       // Already HH:MM
       const mHM = s.match(/^(\d{1,2}:\d{2})/);
       if (mHM) return mHM[1];
@@ -5111,10 +5121,18 @@ async function loadSheetData(sheetName) {
     // Helper: clean Sheets ISO date → YYYY-MM-DD
     function cleanDate(v) {
       if (!v) return '';
-      const s = String(v);
+      let s = String(v).trim();
+      // Strip D: prefix
+      if (s.startsWith('D:')) return s.slice(2);
       // ISO: 2026-05-13T00:00:00.000Z → 2026-05-13
       const mISO = s.match(/^(\d{4}-\d{2}-\d{2})/);
       if (mISO) return mISO[1];
+      // Sheets date serial (days since 1900-01-01)
+      const num = parseFloat(s);
+      if (!isNaN(num) && num > 40000) {
+        const d = new Date((num - 25569) * 86400 * 1000);
+        return d.toISOString().slice(0,10);
+      }
       return s;
     }
     // Helper: clean dataBR DD/MM/YYYY
