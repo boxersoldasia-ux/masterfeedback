@@ -1159,18 +1159,17 @@ async function init() {
     updateSheetStatus(true);
     setLoadingMsg('Carregando dados...');
     try {
-      // Timeout de 8 segundos — se o Sheets não responder, usa dados locais
-      await Promise.race([
-        Promise.all([
-          loadSheetData('colaboradores'),
-          loadSheetData('feedbacks'),
-          loadSheetData('acoes'),
-          loadSheetData('usuarios'),
-          loadSheetData('ponto'),
-        ]),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
-      ]);
-      setLoadingMsg('Pronto!');
+      // Timeout de 4s — resolve (não rejeita) para garantir que o sistema sempre avance
+      const timeoutPromise = new Promise(res => setTimeout(() => res('timeout'), 4000));
+      const syncPromise = Promise.all([
+        loadSheetData('colaboradores'),
+        loadSheetData('feedbacks'),
+        loadSheetData('acoes'),
+        loadSheetData('usuarios'),
+        loadSheetData('ponto'),
+      ]).then(() => 'ok').catch(() => 'error');
+      const result = await Promise.race([syncPromise, timeoutPromise]);
+      setLoadingMsg(result === 'ok' ? 'Pronto!' : 'Usando dados locais...');
     } catch(e) {
       console.warn('Pre-login sync error:', e.message);
       setLoadingMsg('Usando dados locais...');
@@ -4845,10 +4844,13 @@ async function sheetsPost(payload) {
 async function sheetsGet(sheetName) {
   if (!APP.sheetUrl) return null;
   try {
-    const res = await fetch(`${APP.sheetUrl}?sheet=${encodeURIComponent(sheetName)}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(`${APP.sheetUrl}?sheet=${encodeURIComponent(sheetName)}`, { signal: controller.signal });
+    clearTimeout(timer);
     const data = await res.json();
     return Array.isArray(data) ? data : null;
-  } catch(e) { console.warn('Sheets GET error', e); return null; }
+  } catch(e) { console.warn('Sheets GET error:', sheetName, e.message); return null; }
 }
 
 // Legacy compat
