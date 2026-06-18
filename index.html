@@ -1942,7 +1942,7 @@ function renderPontoColab(ponto, c, mesFiltro) {
 
   // Filtro por período
   const meses = getPontoMeses(ponto);
-  let filtrado = mesFiltro ? ponto.filter(p=>(p.data||'').startsWith(mesFiltro)) : ponto;
+  let filtrado = (mesFiltro ? ponto.filter(p=>(p.data||'').startsWith(mesFiltro)) : ponto).filter(p=>p.status!=='fds');
   // Mais recente primeiro
   filtrado = [...filtrado].sort((a,b)=>(b.data||'').localeCompare(a.data||''));
 
@@ -2002,7 +2002,7 @@ function renderPontoColab(ponto, c, mesFiltro) {
       <td>${p.horas||'—'}</td>
       <td style="color:${p.debito&&p.debito!=='00:00'?'var(--danger)':'var(--muted)'}">${p.debito||'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${p.saldo||'—'}</td>
-      <td><span class="badge badge-${p.status==='ok'?'green':p.status==='atraso'?'warn':'red'}">${p.status==='ok'?'OK':p.status==='atraso'?'Atraso':'Falta'}</span></td>
+      <td>${p.status==='fds'?'':`<span class="badge badge-${p.status==='ok'?'green':p.status==='atraso'?'warn':'red'}">${p.status==='ok'?'OK':p.status==='atraso'?'Atraso':'Falta'}</span>`}</td>
     </tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -2382,7 +2382,7 @@ function processFile(file) {
     if (isPontoMais) {
       let nomeAtual = '';
       let headerLine = false;
-      let colHeaders = {e1:2,s1:3,e2:4,s2:5,cred:6,deb:7,hn:9,saldo:10}; // fallback padrão
+      let colHeaders = {e1:2,s1:3,e2:4,s2:5,e3:6,s3:7,cred:8,deb:9,hn:11,saldo:12}; // fallback padrão (formato com 3ª entrada/saída)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
@@ -2417,7 +2417,7 @@ function processFile(file) {
             cred: rawH.findIndex(h=>h.includes('credito')),
             deb:  rawH.findIndex(h=>h.includes('debito')),
             hn:   rawH.findIndex(h=>h.includes('horas normais')),
-            saldo:rawH.length - 1,
+            saldo:rawH.findIndex(h=>h==='saldo') >= 0 ? rawH.findIndex(h=>h==='saldo') : rawH.length - 1,
           };
           continue;
         }
@@ -2460,10 +2460,19 @@ function processFile(file) {
           }
         }
 
-        // Pula fins de semana sem registro (status falta em sáb/dom pode ser esperado)
+        // Fins de semana sem registro: salva só o saldo acumulado (para bhPorColab pegar o último),
+        // mas não gera linha de presença que polui métricas de atraso/falta.
         const diaSemana = rawData.split(',')[0].trim().toLowerCase();
         const fimDeSemana = ['sáb','sab','dom','sáb.','dom.'].includes(diaSemana);
-        if (fimDeSemana && !entrada1) continue; // ignora fins de semana sem registro
+        if (fimDeSemana && !entrada1) {
+          if (saldo) { // só salva se tiver saldo para preservar o acumulado
+            data.push({ nome: nomeAtual, data: dataISO, dataBR,
+              diaSemana: rawData.split(',')[0].trim(),
+              entrada:'', saida:'', entrada1:'', saida1:'', entrada2:'', saida2:'',
+              horas:'', credito:'', debito:'', saldo, status:'fds' });
+          }
+          continue;
+        }
 
         data.push({
           nome: nomeAtual,
@@ -2504,13 +2513,11 @@ function processFile(file) {
     if (APP.sheetUrl) {
       showToast('Sincronizando ponto com Sheets...', '');
       const headers = ['Nome','Data','DataBR','DiaSemana','Entrada1','Saida1','Entrada2','Saida2','Horas','Credito','Debito','Saldo','Status'];
-      // Prefix times with T: to prevent Google Sheets auto-conversion
-      function tp(v) { return v ? 'T:' + v : ''; }
       const rows = data.map(p => [
-        p.nome||'', 'D:' + (p.data||''), p.dataBR||'', p.diaSemana||'',
-        tp(p.entrada1), tp(p.saida1), tp(p.entrada2), tp(p.saida2),
-        tp(p.horas), tp(p.credito), tp(p.debito),
-        p.saldo ? 'SALDO:' + p.saldo : '',
+        p.nome||'', p.data||'', p.dataBR||'', p.diaSemana||'',
+        p.entrada1||'', p.saida1||'', p.entrada2||'', p.saida2||'',
+        p.horas||'', p.credito||'', p.debito||'',
+        p.saldo ? 'SALDO:' + p.saldo : '', // prefix to prevent Sheets auto-converting
         p.status||''
       ]);
       sheetsPost({ action: 'replace_all', sheet: 'ponto', headers, rows }).then(() => {
@@ -2951,7 +2958,8 @@ function revogarAcessoColab(colabId, nome) {
     if (APP.sheetUrl) {
       syncToSheet('colaboradores', [
         c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'',
-        c.foto||'', c.obs||'', '', c.telefone||'', c.email||'', String(c.trocarSenha||false)]);
+        c.foto||'', c.obs||'', '', c.telefone||'', c.email||''
+      ]);
     }
   }
   navTo('configuracoes');
@@ -2983,11 +2991,11 @@ function abrirModalUsuario(key) {
   } else if (!p && !isColabEdit) {
     document.getElementById('u-equipe').value = '';
   }
-  // Set trocarSenha checkbox
+  modal.classList.add('open');
+}  // Set trocarSenha checkbox
   const trocaCb = document.getElementById('u-trocar-senha');
   if (trocaCb) trocaCb.checked = !!(p && p.trocarSenha);
-  modal.classList.add('open');
-}
+  
 
 function editarUsuario(key) { abrirModalUsuario(key); }
 
@@ -3059,12 +3067,11 @@ function salvarUsuario() {
       }
       saveToStorage();
       // ── Sync colaborador with senha to Sheets immediately ──
+      const c = APP.colaboradores[cidx];
       if (APP.sheetUrl) {
-        const c = APP.colaboradores[cidx];
         syncToSheet('colaboradores', [
           c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'',
-          c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'',
-          String(c.trocarSenha||false)
+          c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||''
         ]);
       }
       populateLoginSelect();
@@ -4729,7 +4736,7 @@ function salvarColaborador() {
       };
     }
     saveToStorage();
-    if (APP.sheetUrl) { const colRows = APP.colaboradores.map(c => [c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'', c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'', String(c.trocarSenha||false)]); sheetsPost({ action: 'replace_all', sheet: 'colaboradores', headers: ['ID','Nome','Funcao','Lider','Admissao','Turno','Foto','Obs','Senha','Telefone','Email','TrocarSenha'], rows: colRows }); }
+    if (APP.sheetUrl) syncToSheet('colaboradores', [APP.colaboradores[idx].id, APP.colaboradores[idx].nome, APP.colaboradores[idx].funcao, APP.colaboradores[idx].lider, APP.colaboradores[idx].admissao, APP.colaboradores[idx].turno, APP.colaboradores[idx].foto||'', APP.colaboradores[idx].obs||'', APP.colaboradores[idx].senha||'', APP.colaboradores[idx].telefone||'']);
     closeModal('colaborador');
     updateBadges();
     showToast(`${nome} atualizado!`, 'success');
@@ -4811,20 +4818,13 @@ function editarColaborador(id) {
   document.getElementById('modal-colaborador').classList.add('open');
 }
 
-async function excluirColaborador(id, nome) {
+function excluirColaborador(id, nome) {
   if (!confirm(`Excluir "${nome}"?\n\nOs feedbacks deste colaborador também serão removidos.`)) return;
   APP.colaboradores = APP.colaboradores.filter(x => x.id !== id);
   APP.feedbacks = APP.feedbacks.filter(x => x.colaboradorId !== id);
   saveToStorage();
   updateBadges();
   showToast(`${nome} removido`, 'success');
-  // Sincroniza exclusão com Google Sheets (replace_all para garantir remoção)
-  if (APP.sheetUrl) {
-    const colRows = APP.colaboradores.map(c => [c.id, c.nome, c.funcao, c.lider, c.admissao||'', c.turno||'', c.foto||'', c.obs||'', c.senha||'', c.telefone||'', c.email||'', String(c.trocarSenha||false)]);
-    const fbRows  = APP.feedbacks.map(f => [f.id, f.colaboradorId, f.tipo, f.titulo, f.descricao||'', f.data||'', f.satisfacao||'', f.acao||'', f.prazo||'', f.registradoPor||'']);
-    await sheetsPost({ action: 'replace_all', sheet: 'colaboradores', headers: ['ID','Nome','Funcao','Lider','Admissao','Turno','Foto','Obs','Senha','Telefone','Email','TrocarSenha'], rows: colRows });
-    await sheetsPost({ action: 'replace_all', sheet: 'feedbacks',     headers: ['ID','ColaboradorID','Tipo','Titulo','Descricao','Data','Satisfacao','Acao','Prazo','RegistradoPor'], rows: fbRows });
-  }
   renderPage(document.querySelector('.nav-item.active')?.dataset?.page || 'colaboradores');
 }
 
@@ -4845,16 +4845,10 @@ async function sheetsPost(payload) {
 async function sheetsGet(sheetName) {
   if (!APP.sheetUrl) return null;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(APP.sheetUrl + '?sheet=' + encodeURIComponent(sheetName), { signal: controller.signal });
-    clearTimeout(timer);
+    const res = await fetch(`${APP.sheetUrl}?sheet=${encodeURIComponent(sheetName)}`);
     const data = await res.json();
     return Array.isArray(data) ? data : null;
-  } catch(e) {
-    console.warn('Sheets GET error:', sheetName, e.message);
-    return null;
-  }
+  } catch(e) { console.warn('Sheets GET error', e); return null; }
 }
 
 // Legacy compat
@@ -5067,18 +5061,10 @@ async function loadSheetData(sheetName) {
     // Helper: clean Sheets ISO datetime → just the time HH:MM
     function cleanTime(v) {
       if (!v) return '';
-      let s = String(v).trim();
-      // Strip T: prefix
-      if (s.startsWith('T:')) return s.slice(2);
+      const s = String(v);
       // ISO format: 1899-12-30T07:12:00.000Z → extract HH:MM
       const mISO = s.match(/T(\d{2}:\d{2})/);
       if (mISO) return mISO[1];
-      // Decimal fraction of day (Sheets auto-conversion: 0.40972 = 09:50)
-      const num = parseFloat(s);
-      if (!isNaN(num) && num > 0 && num < 1) {
-        const totalMin = Math.round(num * 24 * 60);
-        return String(Math.floor(totalMin/60)).padStart(2,'0') + ':' + String(totalMin%60).padStart(2,'0');
-      }
       // Already HH:MM
       const mHM = s.match(/^(\d{1,2}:\d{2})/);
       if (mHM) return mHM[1];
@@ -5128,25 +5114,16 @@ async function loadSheetData(sheetName) {
     // Helper: clean Sheets ISO date → YYYY-MM-DD
     function cleanDate(v) {
       if (!v) return '';
-      let s = String(v).trim();
-      // Strip D: prefix
-      if (s.startsWith('D:')) return s.slice(2);
+      const s = String(v);
       // ISO: 2026-05-13T00:00:00.000Z → 2026-05-13
       const mISO = s.match(/^(\d{4}-\d{2}-\d{2})/);
       if (mISO) return mISO[1];
-      // Sheets date serial (days since 1900-01-01)
-      const num = parseFloat(s);
-      if (!isNaN(num) && num > 40000) {
-        const d = new Date((num - 25569) * 86400 * 1000);
-        return d.toISOString().slice(0,10);
-      }
       return s;
     }
     // Helper: clean dataBR DD/MM/YYYY
     function cleanDateBR(v) {
       if (!v) return '';
-      let s = String(v);
-      if (s.startsWith('D:')) s = s.slice(2);
+      const s = String(v);
       const mISO = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
       if (mISO) return mISO[3] + '/' + mISO[2] + '/' + mISO[1];
       return s;
@@ -5154,10 +5131,8 @@ async function loadSheetData(sheetName) {
     APP.pontoData = rows.map(r => {
       const dataRaw = String(r[1]||'');
       const data = cleanDate(dataRaw);
-      // Clean D: prefix from dataBR too
-      let rawBR = String(r[2]||'');
-      if (rawBR.startsWith('D:')) rawBR = rawBR.slice(2);
-      const dataBR = rawBR && !rawBR.includes('T') ? rawBR : cleanDateBR(data);
+      const dataBR = String(r[2]||'') && !String(r[2]||'').includes('T')
+        ? String(r[2]) : cleanDateBR(dataRaw);
       return {
         nome:      String(r[0]||''),
         data,
@@ -5226,7 +5201,6 @@ function iniciarAutoSync() {
     if (!APP.logado) return;
     try {
       const prevFbCount = APP.feedbacks.length;
-      await loadSheetData('colaboradores'); // garante novos colabs e trocas de líder para todos
       await loadSheetData('acoes');
       await loadSheetData('feedbacks');
       await loadSheetData('notificacoes');
@@ -5234,7 +5208,6 @@ function iniciarAutoSync() {
       const page = document.querySelector('.nav-item.active')?.dataset?.page;
       // Only re-render if feedbacks changed (new ones arrived)
       const newFbCount = APP.feedbacks.length;
-      const newColabCount = APP.colaboradores.length;
       if (newFbCount > prevFbCount) {
         // New feedbacks arrived — notify gestão users
         if (APP.tipoAcesso !== 'colaborador') {
@@ -5251,11 +5224,6 @@ function iniciarAutoSync() {
         }
         // Refresh open detalhe modal
         if (APP.colaboradorDetalhe) abrirDetalhe(APP.colaboradorDetalhe);
-      }
-      // Re-render colaboradores se a página estiver aberta (capta novos cadastros e trocas de líder)
-      if (page === 'colaboradores') {
-        renderPage('colaboradores');
-        updateBadges();
       }
       if (page === 'planoacao') {
         // Don't re-render if user is actively typing in the acao field
@@ -5358,16 +5326,8 @@ function populateColaboradoresSelect() {
 
 // ======= HELPERS =======
 function filteredColabs() {
-  let lista;
-  if (APP.usuario?.podeVerTudo) {
-    lista = [...APP.colaboradores];
-  } else {
-    // Normaliza para comparação: ignora case e espaços extras
-    const equipe = (APP.usuario?.equipe || '').trim().toLowerCase();
-    lista = APP.colaboradores.filter(c => (c.lider || '').trim().toLowerCase() === equipe);
-  }
-  // Ordenação alfabética pelo nome
-  return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  if (APP.usuario?.podeVerTudo) return APP.colaboradores;
+  return APP.colaboradores.filter(c => c.lider === APP.usuario?.equipe);
 }
 
 function filteredFeedbacks() {
