@@ -235,6 +235,8 @@
 
   /* RATING STARS */
   .rating-stars { display: flex; gap: 4px; }
+  .edit-star.active { color: #F5A623 !important; }
+  .edit-star:hover { color: #F5A623 !important; }
   .star { font-size: 22px; cursor: pointer; transition: transform 0.1s; line-height: 1; }
   .star:hover { transform: scale(1.2); }
   .star.active { color: #F5A623; }
@@ -793,6 +795,46 @@ function inicializarPlanilha() {
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('feedback')">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarFeedback()">Salvar Registro</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR FEEDBACK (Gerente) -->
+<div class="modal-overlay" id="modal-edit-feedback" onclick="if(event.target===this)closeModal('edit-feedback')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title">Editar Registro</div>
+      <span class="modal-close" onclick="closeModal('edit-feedback')">×</span>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-fb-id">
+      <div class="form-grid">
+        <div class="field span2">
+          <label>Tipo do Registro</label>
+          <select id="edit-fb-tipo">
+            <option value="feedback-colab">💬 Feedback do Colaborador</option>
+            <option value="feedback-lider">📋 Feedback do Líder</option>
+            <option value="ocorrencia">⚠️ Ocorrência</option>
+            <option value="elogio">⭐ Elogio</option>
+            <option value="pdi">🎯 PDI</option>
+          </select>
+        </div>
+        <div class="field span2">
+          <label>Satisfação</label>
+          <div class="rating-stars" style="gap:8px;margin-top:4px">
+            <span class="star edit-star" data-v="1" onclick="setEditRating(1)" style="font-size:28px;cursor:pointer;color:#ccc;transition:color .15s">★</span>
+            <span class="star edit-star" data-v="2" onclick="setEditRating(2)" style="font-size:28px;cursor:pointer;color:#ccc;transition:color .15s">★</span>
+            <span class="star edit-star" data-v="3" onclick="setEditRating(3)" style="font-size:28px;cursor:pointer;color:#ccc;transition:color .15s">★</span>
+            <span class="star edit-star" data-v="4" onclick="setEditRating(4)" style="font-size:28px;cursor:pointer;color:#ccc;transition:color .15s">★</span>
+            <span class="star edit-star" data-v="5" onclick="setEditRating(5)" style="font-size:28px;cursor:pointer;color:#ccc;transition:color .15s">★</span>
+            <span onclick="setEditRating(0)" style="font-size:11px;color:var(--muted);cursor:pointer;align-self:center;margin-left:4px">Limpar</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('edit-feedback')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarEdicaoFeedback()">Salvar</button>
     </div>
   </div>
 </div>
@@ -2055,22 +2097,27 @@ function renderFeedbacks() {
 }
 
 function renderFbTable(fbs) {
-  if (!fbs.length) return `<div class="empty"><div class="empty-icon">💬</div><div class="empty-title">Nenhum registro encontrado</div></div>`;
-  return `<table><thead><tr><th>Colaborador</th><th>Tipo</th><th>Título</th><th>Data</th><th>Nota</th><th>Por</th></tr></thead><tbody>
-    ${fbs.slice().reverse().map(fb => {
-      const c = APP.colaboradores.find(x => x.id === fb.colaboradorId);
-      if (!c) return '';
-      const tc = TIPO_CONFIG[fb.tipo] || {};
-      return `<tr onclick="abrirDetalhe('${c.id}')" style="cursor:pointer">
-        <td><div class="emp-cell"><div class="emp-avatar">${initials(c.nome)}</div><div><div class="emp-name">${c.nome}</div><div class="emp-role">${c.lider}</div></div></div></td>
-        <td><span class="badge badge-${tc.cor}">${tc.icon} ${tc.label}</span></td>
-        <td>${fb.titulo||'—'}</td>
-        <td>${formatDate(fb.data)}</td>
-        <td>${fb.satisfacao?'⭐'.repeat(fb.satisfacao):'—'}</td>
-        <td style="font-size:12px;color:var(--muted)">${fb.registradoPor||'—'}</td>
-      </tr>`;
-    }).join('')}
-  </tbody></table>`;
+  if (!fbs.length) return '<div class="empty"><div class="empty-icon">💬</div><div class="empty-title">Nenhum registro encontrado</div></div>';
+  const isGerente = APP.usuario?.podeVerTudo;
+  const rows = fbs.slice().reverse().map(fb => {
+    const c = APP.colaboradores.find(x => x.id === fb.colaboradorId);
+    if (!c) return '';
+    const tc = TIPO_CONFIG[fb.tipo] || {};
+    const editBtn = isGerente
+      ? `<td><button class="btn btn-sm" onclick="event.stopPropagation();abrirEditarFeedback('${fb.id}')" style="padding:3px 10px;font-size:11px">✏️</button></td>`
+      : '';
+    return `<tr>
+      <td onclick="abrirDetalhe('${c.id}')" style="cursor:pointer"><div class="emp-cell"><div class="emp-avatar">${initials(c.nome)}</div><div><div class="emp-name">${c.nome}</div><div class="emp-role">${c.lider}</div></div></div></td>
+      <td onclick="abrirDetalhe('${c.id}')" style="cursor:pointer"><span class="badge badge-${tc.cor}">${tc.icon} ${tc.label}</span></td>
+      <td onclick="abrirDetalhe('${c.id}')" style="cursor:pointer">${fb.titulo||'—'}</td>
+      <td onclick="abrirDetalhe('${c.id}')" style="cursor:pointer">${formatDate(fb.data)}</td>
+      <td onclick="abrirDetalhe('${c.id}')" style="cursor:pointer">${fb.satisfacao ? '⭐'.repeat(fb.satisfacao) : '—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${fb.registradoPor||'—'}</td>
+      ${editBtn}
+    </tr>`;
+  }).join('');
+  const extraTh = isGerente ? '<th></th>' : '';
+  return `<table><thead><tr><th>Colaborador</th><th>Tipo</th><th>Título</th><th>Data</th><th>Nota</th><th>Por</th>${extraTh}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function filterTable() {
@@ -5296,8 +5343,8 @@ function selectTipo(el) {
   document.querySelectorAll('.tipo-tag').forEach(t => t.classList.remove('selected'));
   el.classList.add('selected');
   APP.tipoAtual = el.dataset.tipo;
-  const showSat = ['feedback-colab','feedback-lider','elogio'].includes(APP.tipoAtual);
-  document.getElementById('field-satisfacao').style.display = showSat ? '' : 'none';
+  // Satisfação sempre visível — todos os tipos podem ter nota
+  document.getElementById('field-satisfacao').style.display = '';
 }
 
 function setRating(v) { APP.rating = v; updateStars(v); }
@@ -5415,6 +5462,50 @@ function loadFromStorage() {
     const u = localStorage.getItem('ops_usuarios');
     APP.usuarios = u ? JSON.parse(u) : null;
   } catch(e) { console.error('Load error', e); }
+}
+
+// ======= EDITAR FEEDBACK (Gerente) =======
+function abrirEditarFeedback(fbId) {
+  const fb = APP.feedbacks.find(f => f.id === fbId);
+  if (!fb) return;
+  document.getElementById('edit-fb-id').value = fbId;
+  // Tipo
+  const sel = document.getElementById('edit-fb-tipo');
+  sel.value = fb.tipo || 'feedback-colab';
+  // Satisfação
+  APP._editRating = fb.satisfacao || 0;
+  updateEditStars(APP._editRating);
+  openModal('edit-feedback');
+}
+
+function updateEditStars(v) {
+  document.querySelectorAll('.edit-star').forEach(s => {
+    s.classList.toggle('active', parseInt(s.dataset.v) <= v);
+  });
+}
+
+function setEditRating(v) {
+  APP._editRating = v;
+  updateEditStars(v);
+}
+
+function salvarEdicaoFeedback() {
+  const fbId = document.getElementById('edit-fb-id').value;
+  const idx = APP.feedbacks.findIndex(f => f.id === fbId);
+  if (idx < 0) return;
+  APP.feedbacks[idx].tipo = document.getElementById('edit-fb-tipo').value;
+  APP.feedbacks[idx].satisfacao = APP._editRating || null;
+  saveToStorage();
+  if (APP.sheetUrl) {
+    const fb = APP.feedbacks[idx];
+    sheetsPost({ action: 'upsert', sheet: 'feedbacks',
+      row: [fb.id, fb.colaboradorId, fb.tipo, fb.titulo, fb.descricao||'', 'DATA:'+(fb.data||''), fb.satisfacao||'', fb.acao||'', fb.prazo||'', fb.registradoPor||''] });
+  }
+  closeModal('edit-feedback');
+  showToast('Registro atualizado!', 'success');
+  renderPage('feedbacks');
+  const wrap = document.getElementById('fb-table-wrap');
+  if (wrap) wrap.innerHTML = renderFbTable(filteredFeedbacks());
 }
 
 // ======= START =======
